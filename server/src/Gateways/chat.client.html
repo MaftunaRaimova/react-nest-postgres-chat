@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Client</title>
+    <script src="https://cdn.socket.io/4.4.1/socket.io.min.js" crossorigin="anonymous"></script>
+</head>
+<body>
+    <h2>Chat Client</h2>
+    <input type="text" id="username" placeholder="Enter your username">
+    <button onclick="register()">Register</button>
+    <br><br>
+    <div id="userList" style="margin-bottom: 20px;"></div>
+    <div id="messages"></div>
+    <input type="text" id="message" placeholder="Enter message">
+    <button onclick="sendMessage()">Send Message</button>
+
+    <script>
+        var socket;
+        var selectedUserId; // This will hold the ID of the user selected by the coordinator
+
+        window.onload = function() {
+            socket = io('http://localhost:3001/chat', { transports : ['websocket'] });
+
+            socket.on('connect', () => {
+                console.log('Connected to the server');
+            });
+
+            socket.on('allUsers', function(users) {
+                console.log('All users data:', users);
+                const userListDiv = document.getElementById('userList');
+                userListDiv.innerHTML = '<h3>Users:</h3>';
+                users.forEach(user => {
+                    userListDiv.innerHTML += `<div><button onclick="selectUser(${user.id}, '${user.username}')">${user.username}</button></div>`;
+                });
+            });
+
+            socket.on('setCoordinator', function(coordinatorId) {
+                console.log('Coordinator ID set:', coordinatorId);
+                selectUser(coordinatorId);
+            });
+
+            socket.on('userMessages', function(data) {
+                console.log('User messages fetched:', data);
+                updateMessagesDisplay(data);
+            });
+
+            socket.on('receiveMessage', function(data) {
+                console.log('Message received:', data);
+                if (selectedUserId === data.fromId || selectedUserId === data.targetId) {
+                    updateMessagesDisplay({ userId: selectedUserId, messages: [data] });
+                }
+            });
+
+            socket.on('error', function(error) {
+                console.log('Error:', error);
+            });
+        };
+
+        function register() {
+            const username = document.getElementById('username').value;
+            socket.emit('register', { username: username });
+            console.log('Registration attempted for username:', username);
+        }
+
+        function selectUser(userId, username) {
+            console.log('User selected:', userId);
+            selectedUserId = userId;
+            document.getElementById('messages').innerHTML = `<h4>Messages with ${username}:</h4>`; // Clear previous messages
+            socket.emit('getUserMessages', { userId: userId });
+        }
+
+        function sendMessage() {
+            const message = document.getElementById('message').value;
+            if (!selectedUserId) {
+                alert('Select a user first!');
+                return;
+            }
+            const messageData = {
+                fromId: socket.id, // Assuming you are setting the socket.id correctly as the user's ID
+                targetId: selectedUserId,
+                from: 'You', // Ideally, replace 'You' with the actual sender's username if available
+                message: message,
+                createdAt: new Date().toISOString() // Just for display; actual timestamp should be from the server
+            };
+            socket.emit('message', { targetId: selectedUserId, message: message });
+            console.log('Message sent:', message, 'to', selectedUserId);
+            document.getElementById('message').value = ''; // Clear the message input after sending
+
+            // Immediately add the sent message to the display for both coordinator and user
+            if (socket.id === selectedUserId || // Adjust this check based on your actual ID handling
+                'Coordinator ID here' === socket.id) { // Add condition for coordinator if needed
+                updateMessagesDisplay({ userId: selectedUserId, messages: [messageData] });
+            }
+        }
+
+        function updateMessagesDisplay(data) {
+            const messagesDiv = document.getElementById('messages');
+            data.messages.forEach(message => {
+  
+                const senderName = (message.fromId === socket.id || message.fromId === 'You') ? 'You' : message.from;
+                messagesDiv.innerHTML += `<p>${senderName}: ${message.text}</p>`;
+            });
+        }
+
+
+
+
+    </script>
+</body>
+</html>
